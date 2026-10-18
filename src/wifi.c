@@ -252,6 +252,9 @@ void control_thread(void *arg)
             continue;
         }
 
+        /* The co-processor answered: now the interface exists */
+        (void)iface_ensure(context);
+
         if (!started)
         {
             if (start_wifi(context) == 0)

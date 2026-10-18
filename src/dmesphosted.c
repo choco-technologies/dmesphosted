@@ -232,7 +232,7 @@ static void destroy_context(dmdrvi_context_t context)
     for (size_t i = 0; i < sizeof(sems) / sizeof(sems[0]); i++)
         if (sems[i] != NULL)
             dmosi_semaphore_destroy(sems[i]);
-    dmosi_mutex_t locks[] = { context->lock, context->rpc_lock, context->scan_lock };
+    dmosi_mutex_t locks[] = { context->lock, context->rpc_lock, context->scan_lock, context->iface_lock };
     for (size_t i = 0; i < sizeof(locks) / sizeof(locks[0]); i++)
         if (locks[i] != NULL)
             dmosi_mutex_destroy(locks[i]);
@@ -244,6 +244,7 @@ static void destroy_context(dmdrvi_context_t context)
     Dmod_Free(context->serial_buf);
     Dmod_Free(context->rpc_buf);
     Dmod_Free(context->rpc_out);
+    Dmod_Free(context->node_path);
     Dmod_Free(context->iface_name);
     Dmod_Free(context->handshake_irq);
     Dmod_Free(context->data_ready_irq);
@@ -265,6 +266,7 @@ static int start(dmdrvi_context_t context)
 {
     context->lock         = dmosi_mutex_create(false);
     context->rpc_lock     = dmosi_mutex_create(false);
+    context->iface_lock   = dmosi_mutex_create(false);
     context->scan_lock    = dmosi_mutex_create(false);
     context->bus_wake     = dmosi_semaphore_create(0, 1);
     context->control_wake = dmosi_semaphore_create(0, 1);
@@ -278,6 +280,7 @@ static int start(dmdrvi_context_t context)
     context->rpc_buf      = Dmod_Malloc(RPC_MAX_MESSAGE);
     context->rpc_out      = Dmod_Malloc(RPC_MAX_MESSAGE);
     if (context->lock == NULL || context->rpc_lock == NULL || context->scan_lock == NULL ||
+        context->iface_lock == NULL ||
         context->bus_wake == NULL || context->control_wake == NULL || context->rpc_done == NULL ||
         context->scan_done == NULL || context->tx_buf == NULL || context->rx_buf == NULL ||
         context->serial_buf == NULL || context->rpc_buf == NULL || context->rpc_out == NULL ||
@@ -501,13 +504,49 @@ dmod_dmdrvi_dif_api_declaration(2.0, dmesphosted, void, _path_ready, ( dmdrvi_co
         return;
     }
 
-    context->iface = dmnetif_register(context->iface_name, path);
-    if (context->iface == NULL)
+    /* The interface is not registered yet: dmnetif's users (networkd, dhcp)
+     * start for every interface it lists, and without a co-processor there is
+     * nothing for them to run on. It appears when the co-processor answers
+     * (iface_ensure(), from the control thread) - or here, when it already has. */
+    char *copy = Dmod_StrDup(path);
+    if (copy == NULL)
     {
-        DMOD_LOG_ERROR("Failed to register %s (%s) with dmnetif\n", context->iface_name, path);
+        DMOD_LOG_ERROR("Failed to retain the node path of %s\n", context->iface_name);
         return;
     }
-    DMOD_LOG_INFO("Registered %s -> %s with dmnetif\n", context->iface_name, path);
+    dmosi_mutex_lock(context->iface_lock);
+    Dmod_Free(context->node_path);
+    context->node_path = copy;
+    dmosi_mutex_unlock(context->iface_lock);
+    (void)iface_ensure(context);
+}
+
+/* Registers the interface with dmnetif once the co-processor has answered and
+ * the node's path is known; true when it is registered. */
+bool iface_ensure(dmdrvi_context_t context)
+{
+    dmosi_mutex_lock(context->iface_lock);
+    if (context->iface == NULL && context->node_path != NULL)
+    {
+        dmosi_mutex_lock(context->lock);
+        bool found = context->bus_state == BUS_UP;
+        dmosi_mutex_unlock(context->lock);
+        if (found)
+        {
+            context->iface = dmnetif_register(context->iface_name, context->node_path);
+            if (context->iface == NULL)
+            {
+                DMOD_LOG_ERROR("Failed to register %s (%s) with dmnetif\n", context->iface_name, context->node_path);
+            }
+            else
+            {
+                DMOD_LOG_INFO("Registered %s -> %s with dmnetif\n", context->iface_name, context->node_path);
+            }
+        }
+    }
+    bool registered = context->iface != NULL;
+    dmosi_mutex_unlock(context->iface_lock);
+    return registered;
 }
 
 dmod_dmdrvi_dif_api_declaration(2.0, dmesphosted, void*, _open, ( dmdrvi_context_t context, int flags, const dmdrvi_dev_num_t* dev_num ))

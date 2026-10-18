@@ -27,6 +27,8 @@ target_link_libraries(${DMOD_MODULE_NAME} dmesphosted_if)
 dmod_link_modules(${DMOD_MODULE_NAME}
     dmdrvi@>=2.9
     dmini
+    dmnetif
+    dmroute
 )
 
 # Register the test module with ctest - this replays the same two steps CI

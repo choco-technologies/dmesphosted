@@ -4,6 +4,7 @@
 #include "dmesphosted.h"
 #include "dmdrvi.h"
 #include "dmini.h"
+#include "dmnetif.h"
 #include "frame.h"
 #include "pb.h"
 #include "priv.h"
@@ -454,6 +455,7 @@ typedef struct
     dmod_dmdrvi_read_t      read;
     dmod_dmdrvi_write_t     write;
     dmod_dmdrvi_ioctl_t     ioctl;
+    dmod_dmdrvi_path_ready_t path_ready;
 } driver_t;
 
 typedef struct
@@ -477,8 +479,9 @@ static bool get_driver(driver_t* drv)
     drv->read   = Dmod_GetDifFunction(module, dmod_dmdrvi_read_sig);
     drv->write  = Dmod_GetDifFunction(module, dmod_dmdrvi_write_sig);
     drv->ioctl  = Dmod_GetDifFunction(module, dmod_dmdrvi_ioctl_sig);
+    drv->path_ready = Dmod_GetDifFunction(module, dmod_dmdrvi_path_ready_sig);
     return drv->create != NULL && drv->free != NULL && drv->open != NULL && drv->close != NULL &&
-           drv->read != NULL && drv->write != NULL && drv->ioctl != NULL;
+           drv->read != NULL && drv->write != NULL && drv->ioctl != NULL && drv->path_ready != NULL;
 }
 
 static bool device_create(device_t* dev, const char* ini_text, const char* section)
@@ -509,6 +512,20 @@ static void device_close(device_t* dev)
         dev->drv.free(dev->ctx);
     if (dev->ini != NULL)
         dmini_destroy(dev->ini);
+}
+
+DMOD_TEST_STEP(no_interface_without_a_co_processor)
+{
+    device_t dev;
+    DMOD_TEST_EXPECT_TRUE(device_open(&dev, TEST_INI));
+
+    /* The node's path is known (dmdevfs says it), nothing answers the bus: no
+     * wlan0 for networkd and DHCP to start on */
+    dev.drv.path_ready(dev.ctx, &dev.dev_num, "/dev/null");
+    Dmod_ThreadSleep(300);
+    DMOD_TEST_EXPECT_TRUE(dmnetif_find_by_name("wlan0") == NULL);
+
+    device_close(&dev);
 }
 
 DMOD_TEST_STEP(driver_is_off_without_a_co_processor)
