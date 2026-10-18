@@ -89,6 +89,10 @@ def main():
     rpc("fx_req_get_ap_records", "WifiScanGetApRecords { number = 16 }",
         Req, ids.Value("Req_WifiScanGetApRecords"), 8, "req_wifi_scan_get_ap_records",
         lambda r: setattr(r, "number", 16))
+    rpc("fx_req_set_ps_none", "SetPs { type = NONE }",
+        Req, ids.Value("Req_WifiSetPs"), 10, "req_wifi_set_ps")
+    rpc("fx_req_set_ps_min", "SetPs { type = MIN_MODEM }",
+        Req, ids.Value("Req_WifiSetPs"), 11, "req_wifi_set_ps", lambda r: setattr(r, "type", 1))
     rpc("fx_req_set_tx_power", "WifiSetMaxTxPower { power = 80 (20 dBm) }",
         Req, ids.Value("Req_WifiSetMaxTxPower"), 9, "req_set_wifi_max_tx_power",
         lambda r: setattr(r, "power", 80))

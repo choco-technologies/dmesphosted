@@ -26,6 +26,7 @@
 
 /* Requests (RpcId) */
 #define RPC_REQ_SET_WIFI_MODE           0x104u
+#define RPC_REQ_WIFI_SET_PS             0x10Eu
 #define RPC_REQ_WIFI_SET_MAX_TX_POWER   0x113u
 #define RPC_REQ_WIFI_INIT               0x116u
 #define RPC_REQ_WIFI_START              0x118u
@@ -49,6 +50,9 @@
 /* esp_wifi's values the requests carry */
 #define RPC_WIFI_IF_STA                 0u
 #define RPC_WIFI_MODE_STA               1u
+#define RPC_WIFI_PS_NONE                0u      /* wifi_ps_type_t */
+#define RPC_WIFI_PS_MIN_MODEM           1u
+#define RPC_WIFI_PS_MAX_MODEM           2u
 
 /* The endpoint requests go to and events come from (RPC version 2) */
 #define RPC_EP_REQUEST                  "RPCRsp"

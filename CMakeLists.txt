@@ -91,6 +91,13 @@ dmod_link_modules(${DMOD_MODULE_NAME}
     dmosi
 )
 
+# dmheap: on a target only - dmod-boot has it built in (its heaps by name);
+# on the host dmod_loader does not enable it, and the regular allocator does
+if(NOT DMOD_TOOLS_NAME MATCHES "x86")
+    dmod_link_modules(${DMOD_MODULE_NAME} dmheap)
+    target_compile_definitions(${DMOD_MODULE_NAME} PRIVATE DMESPHOSTED_HEAPS=1)
+endif()
+
 target_include_directories(${DMOD_MODULE_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/src

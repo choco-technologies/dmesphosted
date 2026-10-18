@@ -12,6 +12,7 @@ A `dmesphosted` device is a section of a dmdevfs `.ini` with
 | `data_ready_interrupt` | - | ... the Data Ready pin's |
 | `poll_interval_ms` | `5` | How often the pins are looked at without their interrupts (1..1000) |
 | `thread_priority` | `1` | Of the driver's two threads |
+| `power_save` | `off` | esp_wifi's power save: `off`, `min`, `max`. In it the access point holds the frames until a beacon: 100 ms and more for every packet |
 | `tx_power` | `0` | The co-processor's highest transmit power, dBm (1..20; 0: its own) |
 | `ssid`, `password` | - | A network to connect to from the start - only in a configuration of one's own, never in a published one |
 

@@ -242,6 +242,8 @@ static size_t request(uint32_t msg_id, uint32_t uid, void (*fill)(pb_writer_t *)
 static void fill_mode(pb_writer_t *w)      { pb_put_uint(w, 1, RPC_WIFI_MODE_STA); }
 static void fill_records(pb_writer_t *w)   { pb_put_uint(w, 1, 16); }
 static void fill_tx_power(pb_writer_t *w)  { pb_put_uint(w, 1, 80); }
+static void fill_ps_none(pb_writer_t *w)   { pb_put_uint(w, 1, RPC_WIFI_PS_NONE); }
+static void fill_ps_min(pb_writer_t *w)    { pb_put_uint(w, 1, RPC_WIFI_PS_MIN_MODEM); }
 static void fill_init(pb_writer_t *w)      { rpc_put_wifi_init(w); }
 static void fill_sta(pb_writer_t *w)       { rpc_put_sta_config(w, "Home Network", "secret123"); }
 static void fill_sta_open(pb_writer_t *w)  { rpc_put_sta_config(w, "Cafe", ""); }
@@ -269,6 +271,8 @@ DMOD_TEST_STEP(rpc_requests_match_protobuf)
     EXPECT_REQUEST(fx_req_scan_start,      RPC_REQ_WIFI_SCAN_START,          7, NULL);
     EXPECT_REQUEST(fx_req_get_ap_records,  RPC_REQ_WIFI_SCAN_GET_AP_RECORDS, 8, fill_records);
     EXPECT_REQUEST(fx_req_set_tx_power,    RPC_REQ_WIFI_SET_MAX_TX_POWER,    9, fill_tx_power);
+    EXPECT_REQUEST(fx_req_set_ps_none,     RPC_REQ_WIFI_SET_PS,             10, fill_ps_none);
+    EXPECT_REQUEST(fx_req_set_ps_min,      RPC_REQ_WIFI_SET_PS,             11, fill_ps_min);
 }
 
 DMOD_TEST_STEP(rpc_reads_responses)
@@ -579,6 +583,8 @@ DMOD_TEST_STEP(driver_checks_its_configuration)
     DMOD_TEST_EXPECT_FALSE(device_create(&dev, "[w]\ndriver_name=dmesphosted\npoll_interval_ms=0\n", "w"));
     device_close(&dev);
     DMOD_TEST_EXPECT_FALSE(device_create(&dev, "[w]\ndriver_name=dmesphosted\ntx_power=30\n", "w"));
+    device_close(&dev);
+    DMOD_TEST_EXPECT_FALSE(device_create(&dev, "[w]\ndriver_name=dmesphosted\npower_save=sometimes\n", "w"));
     device_close(&dev);
     DMOD_TEST_EXPECT_FALSE(device_create(&dev,
         "[w]\ndriver_name=dmesphosted\nssid=0123456789012345678901234567890123456789\n", "w"));

@@ -82,6 +82,7 @@ struct dmdrvi_context
     uint32_t                poll_ms;            /* The bus looked at without an interrupt */
     int                     priority;           /* Of the threads */
     int32_t                 tx_power;           /* Quarter dBm (esp_wifi_set_max_tx_power), 0: its own */
+    uint32_t                power_save;         /* RPC_WIFI_PS_*: esp_wifi_set_ps() */
 
     dmosi_mutex_t           lock;               /* What follows, unless said otherwise */
 
@@ -111,6 +112,9 @@ struct dmdrvi_context
     dmosi_semaphore_t       bus_wake;           /* A pin's interrupt, a frame to send */
     dmosi_semaphore_t       control_wake;       /* A state to act on */
     volatile bool           bus_wake_pending;   /* Posted, not taken yet (see signal_once()) */
+    bool                    pin_levels_by_irq;  /* Both pins have interrupts (both edges): their levels below */
+    volatile bool           handshake_level;    /* As the last interrupt saw it */
+    volatile bool           data_ready_level;
     volatile bool           control_wake_pending;
 
     /* The bus - the bus thread's alone */

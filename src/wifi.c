@@ -5,7 +5,7 @@
 /*
  * The Wi-Fi: the co-processor runs esp_wifi, the RPC calls are its API.
  * Once it is up the control thread starts it as a station (WifiInit,
- * SetWifiMode, WifiStart) and connects to the network set (WifiSetConfig,
+ * SetWifiMode, WifiStart, its power save) and connects to the network set (WifiSetConfig,
  * WifiConnect); its events say when it is connected or lost - then it
  * connects again, waiting longer every time it fails.
  */
@@ -182,6 +182,10 @@ static int start_wifi(dmdrvi_context_t context)
         ret = rpc_call(context, RPC_REQ_WIFI_START, NULL, NULL, NULL, NULL, WIFI_START_TIMEOUT_MS);
     if (ret != 0)
         return ret;
+
+    uint32_t ps = context->power_save;
+    if (rpc_call(context, RPC_REQ_WIFI_SET_PS, build_field1, &ps, NULL, NULL, RPC_TIMEOUT_MS) != 0)
+        DMOD_LOG_WARN("%s: its power save not set\n", context->iface_name);
 
     if (context->tx_power != 0)
     {

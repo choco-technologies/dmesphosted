@@ -3,6 +3,10 @@
 #include "dmdrvi.h"
 #include "dmini.h"
 #include "dmhaman.h"
+#include "dmgpio_types.h"
+#ifdef DMESPHOSTED_HEAPS
+#include "dmheap.h"
+#endif
 #include <errno.h>
 #include <string.h>
 
@@ -11,11 +15,13 @@
 #define DEFAULT_PRIORITY        1
 #define POLL_MS_MAX             1000
 #define TX_POWER_MAX_DBM        20
+#define SPI_BUFFER_ALIGNMENT    32
+#define SPI_BUFFER_HEAP         "main"      /* dmod-boot's internal RAM (SRAM1): the DMA of SPI2 (DMA1) does not reach the SDRAM */
 #define THREAD_STACK_SIZE       (3072 + DMOSI_THREAD_STACK_OVERHEAD)
 
 #define TX_CONTROL_SLOTS        4       /* RPC: at most a few fragments at a time */
 #define TX_DATA_SLOTS           8
-#define RX_DATA_SLOTS           8
+#define RX_DATA_SLOTS           16      /* networkd's pump may be late: a burst waits here */
 
 #define READ_TIMEOUT_MS         1000    /* read() waits for a frame at most so long */
 #define WRITE_TIMEOUT_MS        100     /* write() waits for room at most so long */
@@ -47,6 +53,36 @@ static int interrupt_handler(void *parameters, void *user_ctx)
 
     if (is_valid_context(context))
         bus_wake(context);
+    return 0;
+}
+
+/* The pin's level from what dmgpio's ISR read (its state mask): the bus
+ * thread then needs no ioctl - a dmvfs call - to know it */
+static bool level_of(const void *parameters)
+{
+    const dmgpio_interrupt_params_t *p = (const dmgpio_interrupt_params_t *)parameters;
+    return (p->pins != 0) ? (p->state & p->pins) != 0 : p->state != 0;
+}
+
+static int handshake_handler(void *parameters, void *user_ctx)
+{
+    dmdrvi_context_t context = (dmdrvi_context_t)user_ctx;
+    if (is_valid_context(context) && parameters != NULL)
+    {
+        context->handshake_level = level_of(parameters);
+        bus_wake(context);
+    }
+    return 0;
+}
+
+static int data_ready_handler(void *parameters, void *user_ctx)
+{
+    dmdrvi_context_t context = (dmdrvi_context_t)user_ctx;
+    if (is_valid_context(context) && parameters != NULL)
+    {
+        context->data_ready_level = level_of(parameters);
+        bus_wake(context);
+    }
     return 0;
 }
 
@@ -97,6 +133,21 @@ static int read_config(dmdrvi_context_t context, dmini_context_t ini)
         DMOD_LOG_ERROR("Invalid tx_power %d dBm (expected 0..%d, 0: the chip's own)\n", tx_power, TX_POWER_MAX_DBM);
         return -EINVAL;
     }
+    /* Off unless asked: in power save the access point keeps the frames for
+     * it until a beacon - every packet waits 100 ms and more */
+    const char *ps = dmini_get_string(ini, NULL, "power_save", "off");
+    if (strcmp(ps, "off") == 0)
+        context->power_save = RPC_WIFI_PS_NONE;
+    else if (strcmp(ps, "min") == 0)
+        context->power_save = RPC_WIFI_PS_MIN_MODEM;
+    else if (strcmp(ps, "max") == 0)
+        context->power_save = RPC_WIFI_PS_MAX_MODEM;
+    else
+    {
+        DMOD_LOG_ERROR("Invalid power_save '%s' (expected off, min, max)\n", ps);
+        return -EINVAL;
+    }
+
     context->poll_ms  = (uint32_t)poll_ms;
     context->tx_power = tx_power * 4;   /* esp_wifi_set_max_tx_power(): quarter dBm */
 
@@ -135,16 +186,43 @@ static void stop_threads(dmdrvi_context_t context)
     context->process = NULL;
 }
 
+/* A bus buffer: from the internal RAM's heap when there is one (it is a heap
+ * of its own on dmod-boot), else the regular one */
+static void *spi_buffer_alloc(dmdrvi_context_t context)
+{
+    (void)context;
+    void *buffer = NULL;
+#ifdef DMESPHOSTED_HEAPS
+    dmheap_context_t *heap = dmheap_get_context_by_name(SPI_BUFFER_HEAP);
+    if (heap != NULL)
+        buffer = dmheap_aligned_alloc(heap, SPI_BUFFER_ALIGNMENT, FRAME_BUFFER_SIZE, DMOD_MODULE_NAME);
+#endif
+    return (buffer != NULL) ? buffer : Dmod_AlignedMalloc(FRAME_BUFFER_SIZE, SPI_BUFFER_ALIGNMENT);
+}
+
+static void spi_buffer_free(void *buffer)
+{
+    if (buffer != NULL)
+        Dmod_Free(buffer);      /* (finds the heap that owns it) */
+}
+
 static void destroy_context(dmdrvi_context_t context)
 {
     stop_threads(context);
     if (context->iface != NULL)
         dmnetif_unregister(context->iface);
-    if (context->handshake_irq != NULL)
-        dmhaman_unregister_handler(context->handshake_irq, interrupt_handler);
-    if (context->data_ready_irq != NULL &&
-        (context->handshake_irq == NULL || strcmp(context->data_ready_irq, context->handshake_irq) != 0))
-        dmhaman_unregister_handler(context->data_ready_irq, interrupt_handler);
+    if (context->pin_levels_by_irq)
+    {
+        dmhaman_unregister_handler(context->handshake_irq, handshake_handler);
+        dmhaman_unregister_handler(context->data_ready_irq, data_ready_handler);
+    }
+    else if (context->handshake_irq != NULL || context->data_ready_irq != NULL)
+    {
+        dmhaman_unregister_handler(context->handshake_irq != NULL ? context->handshake_irq : context->data_ready_irq,
+                                   interrupt_handler);
+        if (context->handshake_irq != NULL && context->data_ready_irq != NULL)
+            dmhaman_unregister_handler(context->data_ready_irq, interrupt_handler);
+    }
 
     slotq_deinit(&context->tx_control);
     slotq_deinit(&context->tx_data);
@@ -161,8 +239,8 @@ static void destroy_context(dmdrvi_context_t context)
 
     for (int i = 0; i < FRIEND_COUNT; i++)
         Dmod_Free(context->friend_path[i]);
-    Dmod_Free(context->tx_buf);
-    Dmod_Free(context->rx_buf);
+    spi_buffer_free(context->tx_buf);
+    spi_buffer_free(context->rx_buf);
     Dmod_Free(context->serial_buf);
     Dmod_Free(context->rpc_buf);
     Dmod_Free(context->rpc_out);
@@ -192,8 +270,10 @@ static int start(dmdrvi_context_t context)
     context->control_wake = dmosi_semaphore_create(0, 1);
     context->rpc_done     = dmosi_semaphore_create(0, 1);
     context->scan_done    = dmosi_semaphore_create(0, 1);
-    context->tx_buf       = Dmod_Malloc(FRAME_BUFFER_SIZE);
-    context->rx_buf       = Dmod_Malloc(FRAME_BUFFER_SIZE);
+    /* dmspi moves them by DMA: in memory its streams reach, whole D-cache
+     * lines (32 bytes; 1600 is 50 of them) */
+    context->tx_buf       = spi_buffer_alloc(context);
+    context->rx_buf       = spi_buffer_alloc(context);
     context->serial_buf   = Dmod_Malloc(RPC_MAX_MESSAGE);
     context->rpc_buf      = Dmod_Malloc(RPC_MAX_MESSAGE);
     context->rpc_out      = Dmod_Malloc(RPC_MAX_MESSAGE);
@@ -210,14 +290,26 @@ static int start(dmdrvi_context_t context)
     context->state        = dmesphosted_state_off;
     context->bus_state    = BUS_DOWN;
 
-    const char *names[2] = { context->handshake_irq, context->data_ready_irq };
-    for (int i = 0; i < 2; i++)
+    /* Both pins with interrupts of their own (both edges, see the board's
+     * wifi.ini): their handlers keep the levels. Otherwise the interrupts only
+     * wake the bus thread, which reads the levels itself. */
+    const char *hs = context->handshake_irq, *dr = context->data_ready_irq;
+    context->pin_levels_by_irq = hs != NULL && dr != NULL && strcmp(hs, dr) != 0;
+    if (context->pin_levels_by_irq)
     {
-        if (names[i] == NULL || (i == 1 && names[0] != NULL && strcmp(names[0], names[1]) == 0))
-            continue;
-        if (dmhaman_register_handler(names[i], interrupt_handler, context) != 0)
+        if (dmhaman_register_handler(hs, handshake_handler, context) != 0 ||
+            dmhaman_register_handler(dr, data_ready_handler, context) != 0)
         {
-            DMOD_LOG_ERROR("Cannot register interrupt handler '%s'\n", names[i]);
+            DMOD_LOG_ERROR("Cannot register interrupt handlers '%s', '%s'\n", hs, dr);
+            return -EINVAL;
+        }
+    }
+    else if (hs != NULL || dr != NULL)
+    {
+        const char *name = (hs != NULL) ? hs : dr;
+        if (dmhaman_register_handler(name, interrupt_handler, context) != 0)
+        {
+            DMOD_LOG_ERROR("Cannot register interrupt handler '%s'\n", name);
             return -EINVAL;
         }
     }

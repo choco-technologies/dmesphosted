@@ -65,12 +65,40 @@ static bool open_nodes(dmdrvi_context_t context)
     return ok;
 }
 
-static bool pin_high(dmdrvi_context_t context, friend_t pin)
+/* The pin's level, through its node (a dmvfs call) */
+static bool read_pin(dmdrvi_context_t context, friend_t pin)
 {
     dmgpio_pins_mask_t high = 0;
     if (context->file[pin] == NULL || Dmod_Ioctl(context->file[pin], dmgpio_ioctl_cmd_get_high_pins_state, &high) != 0)
         return false;
     return high != 0;
+}
+
+/* The levels the interrupts keep: read from the nodes again (when they may
+ * have missed an edge - at a start, after a quiet while) */
+static void sync_pins(dmdrvi_context_t context)
+{
+    if (!context->pin_levels_by_irq)
+        return;
+    context->handshake_level  = read_pin(context, FRIEND_HANDSHAKE);
+    context->data_ready_level = read_pin(context, FRIEND_DATA_READY);
+}
+
+static bool pin_high(dmdrvi_context_t context, friend_t pin)
+{
+    if (context->pin_levels_by_irq && pin == FRIEND_HANDSHAKE)
+        return context->handshake_level;
+    if (context->pin_levels_by_irq && pin == FRIEND_DATA_READY)
+        return context->data_ready_level;
+    return read_pin(context, pin);
+}
+
+/* Waits for a pin's interrupt or a frame to send; the levels are read again
+ * when nothing came for so long */
+static void wait_bus(dmdrvi_context_t context, uint32_t timeout_ms)
+{
+    if (!wait_signal(context->bus_wake, &context->bus_wake_pending, (int32_t)timeout_ms))
+        sync_pins(context);
 }
 
 static void set_reset(dmdrvi_context_t context, bool high)
@@ -116,6 +144,7 @@ static void restart_peer(dmdrvi_context_t context)
     dmosi_mutex_unlock(context->lock);
 
     context->started_at = context->last_transfer_at = dmosi_get_tick_count();
+    sync_pins(context);
     set_bus_state(context, BUS_STARTING);
 }
 
@@ -346,8 +375,7 @@ void bus_thread(void *arg)
                 set_bus_state(context, BUS_DOWN);
                 continue;
             }
-            (void)wait_signal(context->bus_wake, &context->bus_wake_pending,
-                                       (int32_t)(context->handshake_irq != NULL ? IRQ_IDLE_MS : context->poll_ms));
+            wait_bus(context, context->handshake_irq != NULL ? IRQ_IDLE_MS : context->poll_ms);
             continue;
         }
 
@@ -356,14 +384,13 @@ void bus_thread(void *arg)
         bool has_data = (context->file[FRIEND_DATA_READY] == NULL) || pin_high(context, FRIEND_DATA_READY);
         if (!to_send && !has_data)
         {
-            (void)wait_signal(context->bus_wake, &context->bus_wake_pending,
-                                       (int32_t)(context->data_ready_irq != NULL ? IRQ_IDLE_MS : context->poll_ms));
+            wait_bus(context, context->data_ready_irq != NULL ? IRQ_IDLE_MS : context->poll_ms);
             continue;
         }
         if (!to_send && context->file[FRIEND_DATA_READY] == NULL &&
             dmosi_get_tick_count() - context->last_transfer_at < context->poll_ms)
         {
-            (void)wait_signal(context->bus_wake, &context->bus_wake_pending, (int32_t)context->poll_ms);
+            wait_bus(context, context->poll_ms);
             continue;
         }
 
@@ -378,7 +405,7 @@ void bus_thread(void *arg)
         }
         context->last_transfer_at = dmosi_get_tick_count();
 
-        /* Then at once again: its answer, the rest of what it has */
+        /* Then again: its answer, the rest of what it has */
         uint32_t retry_ms = 0;
         (void)on_received(context, state, &retry_ms);
         if (retry_ms != 0)
