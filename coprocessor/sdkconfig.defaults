@@ -1,0 +1,16 @@
+# dmesphosted - the co-processor's firmware, every board
+#
+# ESP-Hosted's co-processor (esp-hosted-mcu, examples/wifi/sta/cp) for an MCU
+# host: Wi-Fi only - 802.3 frames and RPC - over SPI full duplex, mode 3.
+# Read after the example's own sdkconfig.defaults (and .<target>), then the
+# board's boards/<board>.defaults: what comes later wins.
+
+# ── Bus ──────────────────────────────────────────────────────────────
+CONFIG_EH_TRANSPORT_CP_SPI=y
+CONFIG_EH_TRANSPORT_CP_SPI_MODE_3=y
+CONFIG_EH_TRANSPORT_CP_SPI_CONTROLLER_HSPI=y
+# The 16-bit byte sum of every frame - SPI has no error detection of its own
+CONFIG_EH_TRANSPORT_CP_SPI_CHECKSUM=y
+
+# ── Console: the chip's own USB serial/JTAG (what flash.sh reads) ────
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y

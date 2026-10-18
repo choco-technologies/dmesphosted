@@ -1,0 +1,23 @@
+# Waveshare ESP32-C3-Zero (ESP32-C3FN4, 4 MB flash in the chip)
+#
+# Its header has GPIO0-10 and 18-21; of them the bus takes the ones nothing
+# else needs at boot:
+#   GPIO2, 8, 9  strapping pins (GPIO9 is the BOOT button) - an unpowered
+#                host pin could pull one low while the chip starts
+#   GPIO10       the WS2812 RGB LED's data input
+#   GPIO18, 19   USB (flashing, the log)
+#   GPIO20, 21   UART0, left free
+# EN is not on the header: the host resets the chip through GPIO5 (a LOW
+# pulse of 2 ms or more; pulled up inside, so a host that does not drive it
+# leaves it alone).
+#
+# GPIO6 / 7 are SPI2's own pins (IO MUX); the others go through the GPIO
+# matrix, which is fast enough for the clocks a host gives it over wires.
+
+CONFIG_EH_TRANSPORT_CP_SPI_HSPI_GPIO_CLK=6
+CONFIG_EH_TRANSPORT_CP_SPI_HSPI_GPIO_MOSI=7
+CONFIG_EH_TRANSPORT_CP_SPI_HSPI_GPIO_MISO=1
+CONFIG_EH_TRANSPORT_CP_SPI_HSPI_GPIO_CS=0
+CONFIG_EH_TRANSPORT_CP_SPI_GPIO_HANDSHAKE=3
+CONFIG_EH_TRANSPORT_CP_SPI_GPIO_DATA_READY=4
+CONFIG_EH_TRANSPORT_CP_SPI_GPIO_RESET=5
