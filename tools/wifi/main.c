@@ -23,6 +23,7 @@ static void print_usage(const char *name)
     Dmod_Printf("  info                     the co-processor: chip, firmware, MAC, counters\n");
     Dmod_Printf("  scan                     the networks in range\n");
     Dmod_Printf("  connect SSID [PASSWORD]  connect (and again whenever lost), wait for it\n");
+    Dmod_Printf("                           without PASSWORD it asks for one (not echoed)\n");
     Dmod_Printf("  disconnect               disconnect and forget the network\n");
     Dmod_Printf("DEVICE defaults to %s\n", DEFAULT_DEVICE);
 }
@@ -115,10 +116,31 @@ static int do_scan(void *dev)
     return 0;
 }
 
+/* Reads a password from the terminal without echoing it; false when it
+ * cannot be read */
+static bool ask_password(char *out, size_t size)
+{
+    uint32_t flags = Dmod_Stdin_GetFlags();
+
+    Dmod_Printf("Password (Enter: none): ");
+    (void)Dmod_Stdin_SetFlags((flags & ~(uint32_t)DMOD_STDIN_FLAG_ECHO) | DMOD_STDIN_FLAG_CANONICAL);
+    char *line = Dmod_Gets(out, (int)size);
+    (void)Dmod_Stdin_SetFlags(flags);
+    Dmod_Printf("\n");
+    if (line == NULL)
+        return false;
+    for (size_t n = strlen(out); n > 0 && (out[n - 1] == '\n' || out[n - 1] == '\r'); n--)
+        out[n - 1] = '\0';
+    return true;
+}
+
 static int do_connect(void *dev, const char *ssid, const char *password)
 {
     dmesphosted_connect_t network;
+    char typed[DMESPHOSTED_PASSWORD_MAX + 2];
     memset(&network, 0, sizeof(network));
+    if (password == NULL && ask_password(typed, sizeof(typed)))
+        password = typed;
     if (strlen(ssid) > DMESPHOSTED_SSID_MAX || (password != NULL && strlen(password) > DMESPHOSTED_PASSWORD_MAX))
     {
         Dmod_Printf("wifi: SSID at most %d, password at most %d characters\n",
@@ -128,6 +150,7 @@ static int do_connect(void *dev, const char *ssid, const char *password)
     strcpy(network.ssid, ssid);
     if (password != NULL)
         strcpy(network.password, password);
+    memset(typed, 0, sizeof(typed));
 
     int ret = Dmod_Ioctl(dev, dmesphosted_ioctl_cmd_connect, &network);
     if (ret != 0)

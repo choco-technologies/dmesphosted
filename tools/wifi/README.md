@@ -9,7 +9,8 @@ wifi [-d DEVICE] COMMAND [ARGS]
   status                   the connection (default)
   info                     the co-processor: chip, firmware, MAC, counters
   scan                     the networks in range
-  connect SSID [PASSWORD]  connect (and again whenever lost), wait for it
+  connect SSID [PASSWORD]  connect (and again whenever lost), wait for it;
+                           without PASSWORD it asks (not echoed; Enter: none)
   disconnect               disconnect and forget the network
 ```
 
@@ -22,7 +23,8 @@ SSID                               dBm  ch  security    access point
 Home Network                       -47   6  WPA2        f4:ec:38:11:22:33
 Cafe                               -80  11  open        00:00:00:00:00:00
 2 network(s)
-> wifi connect "Home Network" secret123
+> wifi connect "Home Network"
+Password (Enter: none):
 connecting to Home Network...
 state:   connected
 network: Home Network
