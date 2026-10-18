@@ -124,13 +124,22 @@ static bool ask_password(char *out, size_t size)
 
     Dmod_Printf("Password (Enter: none): ");
     (void)Dmod_Stdin_SetFlags((flags & ~(uint32_t)DMOD_STDIN_FLAG_ECHO) | DMOD_STDIN_FLAG_CANONICAL);
-    char *line = Dmod_Gets(out, (int)size);
+    /* Dmod_Gets leaves "text\n" and does not terminate it: zeroed first, cut
+     * at the end of the line */
+    memset(out, 0, size);
+    char *line = Dmod_Gets(out, (int)size - 1);
     (void)Dmod_Stdin_SetFlags(flags);
     Dmod_Printf("\n");
     if (line == NULL)
         return false;
-    for (size_t n = strlen(out); n > 0 && (out[n - 1] == '\n' || out[n - 1] == '\r'); n--)
-        out[n - 1] = '\0';
+    for (size_t i = 0; i < size; i++)
+    {
+        if (out[i] == '\n' || out[i] == '\r')
+        {
+            memset(out + i, 0, size - i);
+            break;
+        }
+    }
     return true;
 }
 
