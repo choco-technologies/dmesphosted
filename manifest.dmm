@@ -1,0 +1,6 @@
+# Include dynamically generated versions list from latest release
+$include https://github.com/choco-technologies/dmesphosted/releases/download/vlatest/versions.dmm
+
+# Module entry with version placeholder - expanded by $version-available
+dmesphosted https://github.com/choco-technologies/dmesphosted/releases/download/v<version>/dmesphosted-v<version>-<arch_name>.zip
+
