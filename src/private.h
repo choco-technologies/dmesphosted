@@ -102,7 +102,9 @@ struct dmdrvi_context
     uint32_t                connect_backoff_ms;
     uint32_t                connecting_since;
     bool                    running;            /* DMDRVI_IOCTL_NET_START */
-    dmnetif_iface_t         iface;
+    dmnetif_iface_t         iface;              /* NULL until the co-processor has answered */
+    char                   *node_path;          /* Its devfs node (path_ready), what dmnetif opens */
+    dmosi_mutex_t           iface_lock;         /* Serializes registering the interface */
 
     /* Threads */
     dmosi_process_t         process;
@@ -202,6 +204,7 @@ void control_thread(void *arg);
 /* The bus thread: an RPC event */
 void wifi_event(dmdrvi_context_t context, const rpc_message_t *event);
 /* The bus thread: the co-processor (re)started or was lost */
+bool iface_ensure(dmdrvi_context_t context);
 void wifi_bus_changed(dmdrvi_context_t context, bool up);
 
 int  wifi_connect(dmdrvi_context_t context, const dmdrvi_wifi_connect_t *network);

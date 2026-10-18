@@ -14,7 +14,12 @@ A network device like dmeth's:
 | `DMDRVI_IOCTL_NET_START` / `_STOP` | Frames go / do not (dmnetif's up / down) |
 
 The driver registers the interface with dmnetif itself
-(`dmnetif_register(interface, node)`).
+(`dmnetif_register(interface, node)`) - **when the co-processor has answered**, not
+before: without one (wires, firmware) there is no `wlan0`, so networkd and DHCP
+are not started for it. The node `/dev/wlan0` is there anyway (the Wi-Fi
+ioctls answer "off"), and the interface appears by itself when the
+co-processor shows up later. Once registered it stays (its link goes down if
+the co-processor is lost).
 
 ## The Wi-Fi - dmdrvi's `DMDRVI_IOCTL_WIFI_*`
 

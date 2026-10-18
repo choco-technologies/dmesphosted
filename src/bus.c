@@ -359,7 +359,8 @@ void bus_thread(void *arg)
             /* Said once, then quietly tried again */
             if (failures++ == 0)
                 DMOD_LOG_WARN("%s: no answer from the co-processor - its wires, its firmware "
-                              "(dmesphosted's coprocessor/README.md)?\n", context->iface_name);
+                              "(dmesphosted's coprocessor/README.md)? No interface until it answers\n",
+                              context->iface_name);
             set_bus_state(context, BUS_DOWN);
             retry_at = now + RETRY_MS;
             continue;
