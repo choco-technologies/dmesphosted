@@ -94,9 +94,9 @@ struct dmdrvi_context
     bool                    checksum;           /* The co-processor checks / sends frame checksums */
     dmesphosted_info_t      info;
 
-    dmesphosted_state_t     state;
-    dmesphosted_status_t    status;
-    dmesphosted_connect_t   network;            /* What to connect to ("" none) */
+    dmdrvi_wifi_state_t     state;
+    dmdrvi_wifi_status_t    status;
+    dmdrvi_wifi_connect_t   network;            /* What to connect to ("" none) */
     bool                    wifi_started;
     uint32_t                connect_at;         /* Tick: (re)connect from then on */
     uint32_t                connect_backoff_ms;
@@ -204,9 +204,9 @@ void wifi_event(dmdrvi_context_t context, const rpc_message_t *event);
 /* The bus thread: the co-processor (re)started or was lost */
 void wifi_bus_changed(dmdrvi_context_t context, bool up);
 
-int  wifi_connect(dmdrvi_context_t context, const dmesphosted_connect_t *network);
+int  wifi_connect(dmdrvi_context_t context, const dmdrvi_wifi_connect_t *network);
 int  wifi_disconnect(dmdrvi_context_t context);
-int  wifi_scan(dmdrvi_context_t context, dmesphosted_scan_t *scan);
-void wifi_get_status(dmdrvi_context_t context, dmesphosted_status_t *status);
+int  wifi_scan(dmdrvi_context_t context, dmdrvi_wifi_scan_t *scan);
+void wifi_get_status(dmdrvi_context_t context, dmdrvi_wifi_status_t *status);
 
 #endif /* DMESPHOSTED_PRIVATE_H */

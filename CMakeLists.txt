@@ -81,7 +81,7 @@ dmod_add_library(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
 # dmhaman: the pins' dmgpio interrupt handlers are dispatched by name.
 # dmosi:   threads, locks, semaphores, sleep and tick count.
 dmod_link_modules(${DMOD_MODULE_NAME}
-    dmdrvi@>=2.0
+    dmdrvi@>=2.9
     dmini
     dmnetif
     dmroute
@@ -109,11 +109,3 @@ target_include_directories(${DMOD_MODULE_NAME}_if INTERFACE
 
 enable_testing()
 add_subdirectory(tests)
-
-# ======================================================================
-#               wifi Tool
-# ======================================================================
-# On-target application - the Wi-Fi of a configured device from the shell
-# (status, scan, connect; see tools/wifi/README.md). Not part of the ctest
-# suite: it needs a co-processor.
-add_subdirectory(tools/wifi)

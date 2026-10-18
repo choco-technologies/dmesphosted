@@ -7,17 +7,13 @@
  *
  * The node is a network device like dmeth's: read() / write() are 802.3
  * frames, DMDRVI_IOCTL_NET_* work as for any network driver, and the driver
- * registers the interface with dmnetif itself. The Wi-Fi is the
- * dmesphosted_ioctl_cmd_* of dmesphosted_types.h.
+ * registers the interface with dmnetif itself. The Wi-Fi is dmdrvi's
+ * standard DMDRVI_IOCTL_WIFI_* (scan, connect, status, info) - the `wifi`
+ * tool of dmnet works with it.
  */
 
 #include "dmesphosted_defs.h"
 #include "dmesphosted_types.h"
-
-/**
- * @brief The name of a state ("connected", ...), for messages.
- */
-dmod_dmesphosted_api(1.0, const char*, _state_name, ( dmesphosted_state_t state ));
 
 /**
  * @brief The name of a chip a co-processor reports ("ESP32-C3", ...).

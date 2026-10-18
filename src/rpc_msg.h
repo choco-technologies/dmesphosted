@@ -106,18 +106,18 @@ int32_t rpc_resp_code(const rpc_message_t *msg);
 int32_t rpc_payload_int(const rpc_message_t *msg, uint32_t field);
 
 /* Rpc_Resp_IfaceMacAddrSetGet's mac */
-bool rpc_read_mac(const rpc_message_t *msg, uint8_t mac[DMESPHOSTED_MAC_LEN]);
+bool rpc_read_mac(const rpc_message_t *msg, uint8_t mac[DMDRVI_WIFI_MAC_LEN]);
 
 /* Rpc_Event_StaConnected: the network and its access point */
-bool rpc_read_sta_connected(const rpc_message_t *msg, dmesphosted_status_t *status);
+bool rpc_read_sta_connected(const rpc_message_t *msg, dmdrvi_wifi_status_t *status);
 
 /* Rpc_Event_StaDisconnected: the reason (wifi_err_reason_t) */
 uint16_t rpc_read_sta_disconnected(const rpc_message_t *msg);
 
 /* Rpc_Resp_WifiScanGetApRecords' records, at most @p max; returns how many */
-uint16_t rpc_read_ap_records(const rpc_message_t *msg, dmesphosted_ap_t *aps, uint16_t max);
+uint16_t rpc_read_ap_records(const rpc_message_t *msg, dmdrvi_wifi_ap_t *aps, uint16_t max);
 
 /* Rpc_Resp_WifiStaGetApInfo's record */
-bool rpc_read_ap_info(const rpc_message_t *msg, dmesphosted_ap_t *ap);
+bool rpc_read_ap_info(const rpc_message_t *msg, dmdrvi_wifi_ap_t *ap);
 
 #endif /* DMESPHOSTED_RPC_MSG_H */

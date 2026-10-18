@@ -110,7 +110,7 @@ goes on), `SetWifiMode(STA)`, `WifiStart`, the transmit power if
 configured. Three failures: the co-processor is restarted.
 
 With a network set (`ssid=` in the configuration, or
-`dmesphosted_ioctl_cmd_connect`): `WifiSetConfig` + `WifiConnect`. Its
+`DMDRVI_IOCTL_WIFI_CONNECT`): `WifiSetConfig` + `WifiConnect`. Its
 events then say: `StaConnected` - the link is up (`DMDRVI_IOCTL_NET_GET_LINK_STATUS`;
 dmnetbridge brings the interface up, DHCP follows); `StaDisconnected` -
 down, and connected again after 1 s, 2 s, 4 s ... up to 30 s. No event

@@ -38,7 +38,6 @@ device. What the ESP runs, and how to put it there, is in
 | [`coprocessor/`](coprocessor/README.md) | The ESP's firmware: its configuration per board, `build.sh`, `flash.sh`, `check.py`, **how to prepare a board** |
 | [`configs/board/`](configs/board/stm32f746g-disco/README.md) | The host's side: `wifi.ini` per board, **the wires** |
 | `src/`, `include/` | The driver |
-| [`tools/wifi`](tools/wifi/README.md) | `wifi` - scan, connect, status from the shell |
 | [`docs/`](docs/dmesphosted.md) | How it works, the configuration, the API |
 | `tests/` | Host tests (`dmod_loader`): frames, protobuf, RPC against Google's protobuf, the bring-up, the driver |
 
@@ -48,8 +47,9 @@ device. What the ESP runs, and how to put it there, is in
    release's image, `flash.sh`, a few minutes.
 2. Wire it: e.g. [`configs/board/stm32f746g-disco`](configs/board/stm32f746g-disco/README.md).
 3. Install it with the board's configuration:
-   `dmesphosted driver=board/stm32f746g-disco/wifi.ini` (and `dmspi`, `wifi`).
-4. From the shell:
+   `dmesphosted driver=board/stm32f746g-disco/wifi.ini` (and `dmspi`, and dmnet's `wifi` tool).
+4. From the shell (the `wifi` tool is [dmnet's](https://github.com/choco-technologies/dmnet/tree/main/tools/wifi):
+   it works with any Wi-Fi driver through dmdrvi's `DMDRVI_IOCTL_WIFI_*`):
 
    ```
    wifi info

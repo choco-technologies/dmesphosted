@@ -278,7 +278,7 @@ DMOD_TEST_STEP(rpc_requests_match_protobuf)
 DMOD_TEST_STEP(rpc_reads_responses)
 {
     rpc_message_t m;
-    uint8_t       mac[DMESPHOSTED_MAC_LEN];
+    uint8_t       mac[DMDRVI_WIFI_MAC_LEN];
     static const uint8_t expected_mac[] = { 0x9C, 0xCC, 0x01, 0xA8, 0x1E, 0x68 };
 
     DMOD_TEST_EXPECT_TRUE(rpc_decode(fx_resp_get_mac, sizeof(fx_resp_get_mac), &m));
@@ -296,7 +296,7 @@ DMOD_TEST_STEP(rpc_reads_responses)
     DMOD_TEST_EXPECT_TRUE(rpc_decode(fx_resp_ap_num, sizeof(fx_resp_ap_num), &m));
     DMOD_TEST_EXPECT_EQ(rpc_payload_int(&m, 2), 3);
 
-    dmesphosted_ap_t aps[3];
+    dmdrvi_wifi_ap_t aps[3];
     DMOD_TEST_EXPECT_TRUE(rpc_decode(fx_resp_ap_records, sizeof(fx_resp_ap_records), &m));
     DMOD_TEST_EXPECT_EQ(rpc_read_ap_records(&m, aps, 3), 2);
     DMOD_TEST_EXPECT_EQ(strcmp(aps[0].ssid, "Home Network"), 0);
@@ -304,14 +304,14 @@ DMOD_TEST_STEP(rpc_reads_responses)
     DMOD_TEST_EXPECT_EQ(aps[0].bssid[5], 0x33);
     DMOD_TEST_EXPECT_EQ(aps[0].channel, 6);
     DMOD_TEST_EXPECT_EQ(aps[0].rssi, -47);
-    DMOD_TEST_EXPECT_EQ(aps[0].authmode, 3);
+    DMOD_TEST_EXPECT_EQ(aps[0].auth, 3);
     DMOD_TEST_EXPECT_EQ(strcmp(aps[1].ssid, "Cafe"), 0);
     DMOD_TEST_EXPECT_EQ(aps[1].channel, 11);
     DMOD_TEST_EXPECT_EQ(aps[1].rssi, -80);
-    DMOD_TEST_EXPECT_EQ(aps[1].authmode, 0);
+    DMOD_TEST_EXPECT_EQ(aps[1].auth, 0);
     DMOD_TEST_EXPECT_EQ(rpc_read_ap_records(&m, aps, 1), 1);
 
-    dmesphosted_ap_t ap;
+    dmdrvi_wifi_ap_t ap;
     DMOD_TEST_EXPECT_TRUE(rpc_decode(fx_resp_ap_info, sizeof(fx_resp_ap_info), &m));
     DMOD_TEST_EXPECT_TRUE(rpc_read_ap_info(&m, &ap));
     DMOD_TEST_EXPECT_EQ(ap.rssi, -52);
@@ -320,7 +320,7 @@ DMOD_TEST_STEP(rpc_reads_responses)
 DMOD_TEST_STEP(rpc_reads_events)
 {
     rpc_message_t        m;
-    dmesphosted_status_t st;
+    dmdrvi_wifi_status_t st;
     memset(&st, 0, sizeof(st));
 
     DMOD_TEST_EXPECT_TRUE(rpc_decode(fx_event_connected, sizeof(fx_event_connected), &m));
@@ -431,9 +431,8 @@ DMOD_TEST_STEP(priv_rejects_what_is_not_an_init_event)
 
 /* ---- Names ---- */
 
-DMOD_TEST_STEP(names_of_states_and_chips)
+DMOD_TEST_STEP(names_of_chips)
 {
-    DMOD_TEST_EXPECT_EQ(strcmp(dmesphosted_state_name(dmesphosted_state_connected), "connected"), 0);
     DMOD_TEST_EXPECT_EQ(strcmp(dmesphosted_chip_name(DMESPHOSTED_CHIP_ESP32C3), "ESP32-C3"), 0);
     DMOD_TEST_EXPECT_EQ(strcmp(dmesphosted_chip_name(0x42), "an ESP"), 0);
 }
@@ -519,13 +518,15 @@ DMOD_TEST_STEP(driver_is_off_without_a_co_processor)
     DMOD_TEST_EXPECT_EQ(dev.dev_num.flags, DMDRVI_NUM_ALT_NAME);
     DMOD_TEST_EXPECT_EQ(strcmp(dev.dev_num.alt_name, "wlan0"), 0);
 
-    dmesphosted_info_t info;
-    DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, dmesphosted_ioctl_cmd_get_info, &info), 0);
-    DMOD_TEST_EXPECT_EQ(info.chip_id, DMESPHOSTED_CHIP_UNKNOWN);
+    dmdrvi_wifi_info_t info;
+    DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_WIFI_GET_INFO, &info), 0);
+    DMOD_TEST_EXPECT_EQ(strcmp(info.driver, "dmesphosted"), 0);
+    DMOD_TEST_EXPECT_EQ(info.chip[0], '\0');        /* Not reached yet */
+    DMOD_TEST_EXPECT_EQ(info.firmware[0], '\0');
 
-    dmesphosted_status_t st;
-    DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, dmesphosted_ioctl_cmd_get_status, &st), 0);
-    DMOD_TEST_EXPECT_EQ(st.state, dmesphosted_state_off);
+    dmdrvi_wifi_status_t st;
+    DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_WIFI_GET_STATUS, &st), 0);
+    DMOD_TEST_EXPECT_EQ(st.state, DMDRVI_WIFI_STATE_OFF);
 
     dmdrvi_net_link_status_t link = DMDRVI_NET_LINK_UP;
     DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_NET_GET_LINK_STATUS, &link), 0);
@@ -535,9 +536,9 @@ DMOD_TEST_STEP(driver_is_off_without_a_co_processor)
     DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_NET_GET_MAC_ADDR, &mac), -ENODEV);
     DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_NET_SET_MAC_ADDR, &mac), -ENOTSUP);
 
-    dmesphosted_ap_t   aps[2];
-    dmesphosted_scan_t scan = { aps, 2, 0 };
-    DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, dmesphosted_ioctl_cmd_scan, &scan), -ENODEV);
+    dmdrvi_wifi_ap_t   aps[2];
+    dmdrvi_wifi_scan_t scan = { aps, 2, 0 };
+    DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_WIFI_SCAN, &scan), -ENODEV);
     DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, 0x7777, NULL), -ENOTTY);
 
     uint8_t frame[64] = { 0 };
@@ -545,7 +546,7 @@ DMOD_TEST_STEP(driver_is_off_without_a_co_processor)
     DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_NET_START, NULL), 0);
     DMOD_TEST_EXPECT_EQ(dev.drv.write(dev.ctx, dev.handle, frame, sizeof(frame), 0), 0);   /* Not connected */
     DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_NET_STOP, NULL), 0);
-    DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, dmesphosted_ioctl_cmd_get_info, &info), 0);
+    DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_WIFI_GET_INFO, &info), 0);
     DMOD_TEST_EXPECT_EQ(info.tx_dropped, 1);
 
     device_close(&dev);
@@ -556,22 +557,22 @@ DMOD_TEST_STEP(driver_keeps_the_network_to_connect_to)
     device_t dev;
     DMOD_TEST_EXPECT_TRUE(device_open(&dev, TEST_INI));
 
-    dmesphosted_connect_t net;
+    dmdrvi_wifi_connect_t net;
     memset(&net, 0, sizeof(net));
-    DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, dmesphosted_ioctl_cmd_connect, &net), -EINVAL);
+    DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_WIFI_CONNECT, &net), -EINVAL);
     strcpy(net.ssid, "Home Network");
     strcpy(net.password, "short");
-    DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, dmesphosted_ioctl_cmd_connect, &net), -EINVAL);
+    DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_WIFI_CONNECT, &net), -EINVAL);
     strcpy(net.password, "secret123");
-    DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, dmesphosted_ioctl_cmd_connect, &net), 0);
+    DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_WIFI_CONNECT, &net), 0);
 
-    dmesphosted_status_t st;
-    DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, dmesphosted_ioctl_cmd_get_status, &st), 0);
+    dmdrvi_wifi_status_t st;
+    DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_WIFI_GET_STATUS, &st), 0);
     DMOD_TEST_EXPECT_EQ(strcmp(st.ssid, "Home Network"), 0);
-    DMOD_TEST_EXPECT_EQ(st.state, dmesphosted_state_off);
+    DMOD_TEST_EXPECT_EQ(st.state, DMDRVI_WIFI_STATE_OFF);
 
-    DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, dmesphosted_ioctl_cmd_disconnect, NULL), 0);
-    DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, dmesphosted_ioctl_cmd_get_status, &st), 0);
+    DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_WIFI_DISCONNECT, NULL), 0);
+    DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, dev.handle, DMDRVI_IOCTL_WIFI_GET_STATUS, &st), 0);
     DMOD_TEST_EXPECT_EQ(st.ssid[0], '\0');
 
     device_close(&dev);
@@ -591,8 +592,8 @@ DMOD_TEST_STEP(driver_checks_its_configuration)
     device_close(&dev);
 
     DMOD_TEST_EXPECT_TRUE(device_create(&dev, "[w]\ndriver_name=dmesphosted\nssid=Cafe\ntx_power=8\n", "w"));
-    dmesphosted_status_t st;
-    DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, NULL, dmesphosted_ioctl_cmd_get_status, &st), 0);
+    dmdrvi_wifi_status_t st;
+    DMOD_TEST_EXPECT_EQ(dev.drv.ioctl(dev.ctx, NULL, DMDRVI_IOCTL_WIFI_GET_STATUS, &st), 0);
     DMOD_TEST_EXPECT_EQ(strcmp(st.ssid, "Cafe"), 0);
     device_close(&dev);
 }

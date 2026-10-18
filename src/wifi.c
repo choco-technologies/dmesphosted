@@ -43,7 +43,7 @@ static void build_wifi_init(pb_writer_t *w, const void *arg)
 
 static void build_sta_config(pb_writer_t *w, const void *arg)
 {
-    const dmesphosted_connect_t *network = arg;
+    const dmdrvi_wifi_connect_t *network = arg;
     rpc_put_sta_config(w, network->ssid, network->password);
 }
 
@@ -60,7 +60,7 @@ static int read_number(const rpc_message_t *resp, void *arg)
 
 static int read_records(const rpc_message_t *resp, void *arg)
 {
-    dmesphosted_scan_t *scan = arg;
+    dmdrvi_wifi_scan_t *scan = arg;
     scan->count = rpc_read_ap_records(resp, scan->aps, scan->max);
     return 0;
 }
@@ -105,7 +105,7 @@ void wifi_bus_changed(dmdrvi_context_t context, bool up)
 {
     dmosi_mutex_lock(context->lock);
     context->wifi_started       = false;
-    context->state              = up ? dmesphosted_state_starting : dmesphosted_state_off;
+    context->state              = up ? DMDRVI_WIFI_STATE_STARTING : DMDRVI_WIFI_STATE_OFF;
     context->connect_at         = dmosi_get_tick_count();
     context->connect_backoff_ms = BACKOFF_MIN_MS;
     clear_link(context);
@@ -125,9 +125,9 @@ void wifi_event(dmdrvi_context_t context, const rpc_message_t *event)
             dmosi_mutex_lock(context->lock);
             (void)rpc_read_sta_connected(event, &context->status);
             context->status.reason      = 0;
-            context->state              = dmesphosted_state_connected;
+            context->state              = DMDRVI_WIFI_STATE_CONNECTED;
             context->connect_backoff_ms = BACKOFF_MIN_MS;
-            char    ssid[DMESPHOSTED_SSID_MAX + 1];
+            char    ssid[DMDRVI_WIFI_SSID_MAX + 1];
             uint8_t channel = context->status.channel;
             memcpy(ssid, context->status.ssid, sizeof(ssid));
             dmosi_mutex_unlock(context->lock);
@@ -138,11 +138,11 @@ void wifi_event(dmdrvi_context_t context, const rpc_message_t *event)
         {
             uint16_t reason = rpc_read_sta_disconnected(event);
             dmosi_mutex_lock(context->lock);
-            bool was_connected = context->state == dmesphosted_state_connected;
+            bool was_connected = context->state == DMDRVI_WIFI_STATE_CONNECTED;
             context->status.reason = reason;
             clear_link(context);
-            if (context->state == dmesphosted_state_connected || context->state == dmesphosted_state_connecting)
-                context->state = dmesphosted_state_idle;
+            if (context->state == DMDRVI_WIFI_STATE_CONNECTED || context->state == DMDRVI_WIFI_STATE_CONNECTING)
+                context->state = DMDRVI_WIFI_STATE_IDLE;
             if (context->network.ssid[0] != '\0')
                 schedule_retry(context);
             dmosi_mutex_unlock(context->lock);
@@ -163,7 +163,7 @@ void wifi_event(dmdrvi_context_t context, const rpc_message_t *event)
 
 static int start_wifi(dmdrvi_context_t context)
 {
-    uint8_t mac[DMESPHOSTED_MAC_LEN] = { 0 };
+    uint8_t mac[DMDRVI_WIFI_MAC_LEN] = { 0 };
     if (rpc_call(context, RPC_REQ_IFACE_MAC_ADDR_SET_GET, build_get_mac, NULL, read_mac, mac, RPC_TIMEOUT_MS) == 0)
     {
         dmosi_mutex_lock(context->lock);
@@ -199,7 +199,7 @@ static int start_wifi(dmdrvi_context_t context)
     return 0;
 }
 
-static int connect_network(dmdrvi_context_t context, const dmesphosted_connect_t *network)
+static int connect_network(dmdrvi_context_t context, const dmdrvi_wifi_connect_t *network)
 {
     int ret = rpc_call(context, RPC_REQ_WIFI_SET_CONFIG, build_sta_config, network, NULL, NULL, RPC_TIMEOUT_MS);
     if (ret != 0)
@@ -207,7 +207,7 @@ static int connect_network(dmdrvi_context_t context, const dmesphosted_connect_t
 
     /* Connecting before the call: its events may come before its answer */
     dmosi_mutex_lock(context->lock);
-    context->state            = dmesphosted_state_connecting;
+    context->state            = DMDRVI_WIFI_STATE_CONNECTING;
     context->connecting_since = dmosi_get_tick_count();
     dmosi_mutex_unlock(context->lock);
     DMOD_LOG_INFO("%s: connecting to \"%s\"\n", context->iface_name, network->ssid);
@@ -216,8 +216,8 @@ static int connect_network(dmdrvi_context_t context, const dmesphosted_connect_t
     if (ret != 0)
     {
         dmosi_mutex_lock(context->lock);
-        if (context->state == dmesphosted_state_connecting)
-            context->state = dmesphosted_state_idle;
+        if (context->state == DMDRVI_WIFI_STATE_CONNECTING)
+            context->state = DMDRVI_WIFI_STATE_IDLE;
         dmosi_mutex_unlock(context->lock);
     }
     return ret;
@@ -235,13 +235,13 @@ void control_thread(void *arg)
             break;
 
         uint32_t now = dmosi_get_tick_count();
-        dmesphosted_connect_t network;
+        dmdrvi_wifi_connect_t network;
         dmosi_mutex_lock(context->lock);
         bool up      = context->bus_state == BUS_UP;
         bool started = context->wifi_started;
-        bool due     = context->network.ssid[0] != '\0' && context->state == dmesphosted_state_idle &&
+        bool due     = context->network.ssid[0] != '\0' && context->state == DMDRVI_WIFI_STATE_IDLE &&
                        (int32_t)(now - context->connect_at) >= 0;
-        bool stuck   = context->state == dmesphosted_state_connecting &&
+        bool stuck   = context->state == DMDRVI_WIFI_STATE_CONNECTING &&
                        now - context->connecting_since > CONNECT_TIMEOUT_MS;
         network = context->network;
         dmosi_mutex_unlock(context->lock);
@@ -259,8 +259,8 @@ void control_thread(void *arg)
                 failures = 0;
                 dmosi_mutex_lock(context->lock);
                 context->wifi_started = true;
-                if (context->state == dmesphosted_state_starting)
-                    context->state = dmesphosted_state_idle;
+                if (context->state == DMDRVI_WIFI_STATE_STARTING)
+                    context->state = DMDRVI_WIFI_STATE_IDLE;
                 dmosi_mutex_unlock(context->lock);
                 wake(context);
             }
@@ -281,8 +281,8 @@ void control_thread(void *arg)
             DMOD_LOG_WARN("%s: no answer to connecting - trying again\n", context->iface_name);
             (void)call(context, RPC_REQ_WIFI_DISCONNECT);
             dmosi_mutex_lock(context->lock);
-            if (context->state == dmesphosted_state_connecting)
-                context->state = dmesphosted_state_idle;
+            if (context->state == DMDRVI_WIFI_STATE_CONNECTING)
+                context->state = DMDRVI_WIFI_STATE_IDLE;
             schedule_retry(context);
             dmosi_mutex_unlock(context->lock);
             continue;
@@ -307,11 +307,11 @@ static size_t bounded_len(const char *s, size_t max)
     return n;
 }
 
-int wifi_connect(dmdrvi_context_t context, const dmesphosted_connect_t *network)
+int wifi_connect(dmdrvi_context_t context, const dmdrvi_wifi_connect_t *network)
 {
     size_t ssid_len = bounded_len(network->ssid, sizeof(network->ssid));
     size_t pass_len = bounded_len(network->password, sizeof(network->password));
-    if (ssid_len == 0 || ssid_len > DMESPHOSTED_SSID_MAX || pass_len > DMESPHOSTED_PASSWORD_MAX ||
+    if (ssid_len == 0 || ssid_len > DMDRVI_WIFI_SSID_MAX || pass_len > DMDRVI_WIFI_PASSWORD_MAX ||
         (pass_len != 0 && pass_len < PASSWORD_MIN))
         return -EINVAL;
 
@@ -320,8 +320,8 @@ int wifi_connect(dmdrvi_context_t context, const dmesphosted_connect_t *network)
     context->network.ssid[ssid_len] = '\0';
     context->network.password[pass_len] = '\0';
     memcpy(context->status.ssid, context->network.ssid, ssid_len + 1);
-    bool connected = context->state == dmesphosted_state_connected ||
-                     context->state == dmesphosted_state_connecting;
+    bool connected = context->state == DMDRVI_WIFI_STATE_CONNECTED ||
+                     context->state == DMDRVI_WIFI_STATE_CONNECTING;
     dmosi_mutex_unlock(context->lock);
 
     /* Another network: off the one it is on first */
@@ -329,8 +329,8 @@ int wifi_connect(dmdrvi_context_t context, const dmesphosted_connect_t *network)
         (void)call(context, RPC_REQ_WIFI_DISCONNECT);
 
     dmosi_mutex_lock(context->lock);
-    if (context->state == dmesphosted_state_connected || context->state == dmesphosted_state_connecting)
-        context->state = dmesphosted_state_idle;
+    if (context->state == DMDRVI_WIFI_STATE_CONNECTED || context->state == DMDRVI_WIFI_STATE_CONNECTING)
+        context->state = DMDRVI_WIFI_STATE_IDLE;
     context->connect_at         = dmosi_get_tick_count();
     context->connect_backoff_ms = BACKOFF_MIN_MS;
     dmosi_mutex_unlock(context->lock);
@@ -343,21 +343,21 @@ int wifi_disconnect(dmdrvi_context_t context)
     dmosi_mutex_lock(context->lock);
     memset(&context->network, 0, sizeof(context->network));
     context->status.ssid[0] = '\0';
-    bool connected = context->state == dmesphosted_state_connected ||
-                     context->state == dmesphosted_state_connecting;
+    bool connected = context->state == DMDRVI_WIFI_STATE_CONNECTED ||
+                     context->state == DMDRVI_WIFI_STATE_CONNECTING;
     dmosi_mutex_unlock(context->lock);
 
     int ret = connected ? call(context, RPC_REQ_WIFI_DISCONNECT) : 0;
 
     dmosi_mutex_lock(context->lock);
-    if (context->state == dmesphosted_state_connected || context->state == dmesphosted_state_connecting)
-        context->state = dmesphosted_state_idle;
+    if (context->state == DMDRVI_WIFI_STATE_CONNECTED || context->state == DMDRVI_WIFI_STATE_CONNECTING)
+        context->state = DMDRVI_WIFI_STATE_IDLE;
     clear_link(context);
     dmosi_mutex_unlock(context->lock);
     return ret;
 }
 
-int wifi_scan(dmdrvi_context_t context, dmesphosted_scan_t *scan)
+int wifi_scan(dmdrvi_context_t context, dmdrvi_wifi_scan_t *scan)
 {
     if (scan->aps == NULL && scan->max != 0)
         return -EINVAL;
@@ -391,7 +391,7 @@ int wifi_scan(dmdrvi_context_t context, dmesphosted_scan_t *scan)
         want = SCAN_RECORDS_MAX;
     if (ret == 0 && want != 0)
     {
-        dmesphosted_scan_t part = { scan->aps, (uint16_t)want, 0 };
+        dmdrvi_wifi_scan_t part = { scan->aps, (uint16_t)want, 0 };
         ret = rpc_call(context, RPC_REQ_WIFI_SCAN_GET_AP_RECORDS, build_field1, &want, read_records, &part,
                        RPC_TIMEOUT_MS);
         scan->count = part.count;
@@ -400,15 +400,15 @@ int wifi_scan(dmdrvi_context_t context, dmesphosted_scan_t *scan)
     return ret;
 }
 
-void wifi_get_status(dmdrvi_context_t context, dmesphosted_status_t *status)
+void wifi_get_status(dmdrvi_context_t context, dmdrvi_wifi_status_t *status)
 {
     dmosi_mutex_lock(context->lock);
     *status       = context->status;
     status->state = context->state;
     dmosi_mutex_unlock(context->lock);
 
-    dmesphosted_ap_t ap;
-    if (status->state == dmesphosted_state_connected &&
+    dmdrvi_wifi_ap_t ap;
+    if (status->state == DMDRVI_WIFI_STATE_CONNECTED &&
         rpc_call(context, RPC_REQ_WIFI_STA_GET_AP_INFO, NULL, NULL, read_ap_info, &ap, RPC_TIMEOUT_MS) == 0)
         status->rssi = ap.rssi;
 }

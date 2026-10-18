@@ -4,5 +4,3 @@ $include https://github.com/choco-technologies/dmesphosted/releases/download/vla
 # Module entry with version placeholder - expanded by $version-available
 dmesphosted https://github.com/choco-technologies/dmesphosted/releases/download/v<version>/dmesphosted-v<version>-<arch_name>.zip
 
-# The shell tool (see tools/wifi) - its own DMOD module/package.
-wifi https://github.com/choco-technologies/dmesphosted/releases/download/v<version>/wifi-v<version>-<arch_name>.zip

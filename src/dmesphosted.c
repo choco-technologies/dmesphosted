@@ -158,7 +158,7 @@ static int read_config(dmdrvi_context_t context, dmini_context_t ini)
                      dmini_get_string(ini, NULL, "password", NULL)))
     {
         DMOD_LOG_ERROR("Invalid ssid/password (at most %d/%d characters)\n",
-                       DMESPHOSTED_SSID_MAX, DMESPHOSTED_PASSWORD_MAX);
+                       DMDRVI_WIFI_SSID_MAX, DMDRVI_WIFI_PASSWORD_MAX);
         return -EINVAL;
     }
     memcpy(context->status.ssid, context->network.ssid, sizeof(context->status.ssid));
@@ -287,7 +287,7 @@ static int start(dmdrvi_context_t context)
         return -ENOMEM;
 
     context->info.chip_id = DMESPHOSTED_CHIP_UNKNOWN;
-    context->state        = dmesphosted_state_off;
+    context->state        = DMDRVI_WIFI_STATE_OFF;
     context->bus_state    = BUS_DOWN;
 
     /* Both pins with interrupts of their own (both edges, see the board's
@@ -346,19 +346,6 @@ static void fill_dev_num(dmini_context_t ini, dmdrvi_dev_num_t *dev_num)
 
 /* ---- Names ---- */
 
-dmod_dmesphosted_api_declaration(1.0, const char*, _state_name, ( dmesphosted_state_t state ))
-{
-    switch (state)
-    {
-        case dmesphosted_state_off:        return "off (no co-processor)";
-        case dmesphosted_state_starting:   return "starting";
-        case dmesphosted_state_idle:       return "not connected";
-        case dmesphosted_state_connecting: return "connecting";
-        case dmesphosted_state_connected:  return "connected";
-        default:                           return "?";
-    }
-}
-
 dmod_dmesphosted_api_declaration(1.0, const char*, _chip_name, ( uint8_t chip_id ))
 {
     switch (chip_id)
@@ -373,6 +360,59 @@ dmod_dmesphosted_api_declaration(1.0, const char*, _chip_name, ( uint8_t chip_id
         case DMESPHOSTED_CHIP_UNKNOWN: return "not reached";
         default:                       return "an ESP";
     }
+}
+
+/* Appends text / a decimal number to out (size bytes in all), terminated */
+static size_t put_text(char *out, size_t size, size_t at, const char *text)
+{
+    while (*text != '\0' && at + 1 < size)
+        out[at++] = *text++;
+    out[at] = '\0';
+    return at;
+}
+
+static size_t put_number(char *out, size_t size, size_t at, unsigned value)
+{
+    char digits[10];
+    size_t n = 0;
+    do
+    {
+        digits[n++] = (char)('0' + value % 10);
+        value /= 10;
+    } while (value != 0 && n < sizeof(digits));
+    while (n > 0 && at + 1 < size)
+        out[at++] = digits[--n];
+    out[at] = '\0';
+    return at;
+}
+
+/* DMDRVI_IOCTL_WIFI_GET_INFO: what the context knows, in dmdrvi's generic form */
+static void get_wifi_info(dmdrvi_context_t context, dmdrvi_wifi_info_t *out)
+{
+    memset(out, 0, sizeof(*out));
+    put_text(out->driver, sizeof(out->driver), 0, "dmesphosted");
+
+    dmosi_mutex_lock(context->lock);
+    const dmesphosted_info_t *info = &context->info;
+    if (info->chip_id != DMESPHOSTED_CHIP_UNKNOWN)
+    {
+        uint32_t fw = info->firmware_version;
+        put_text(out->chip, sizeof(out->chip), 0, dmesphosted_chip_name(info->chip_id));
+        size_t at = put_text(out->firmware, sizeof(out->firmware), 0, "ESP-Hosted ");
+        at = put_number(out->firmware, sizeof(out->firmware), at, (fw >> 16) & 0xFF);
+        at = put_text(out->firmware, sizeof(out->firmware), at, ".");
+        at = put_number(out->firmware, sizeof(out->firmware), at, (fw >> 8) & 0xFF);
+        at = put_text(out->firmware, sizeof(out->firmware), at, ".");
+        put_number(out->firmware, sizeof(out->firmware), at, fw & 0xFF);
+        memcpy(out->mac, info->mac, DMDRVI_WIFI_MAC_LEN);
+    }
+    out->rx_frames  = info->rx_frames;
+    out->tx_frames  = info->tx_frames;
+    out->rx_dropped = info->rx_dropped;
+    out->tx_dropped = info->tx_dropped;
+    out->errors     = info->bad_frames;
+    out->resets     = info->resets;
+    dmosi_mutex_unlock(context->lock);
 }
 
 /* ---- DMOD lifecycle ---- */
@@ -515,7 +555,7 @@ dmod_dmdrvi_dif_api_declaration(2.0, dmesphosted, dmdrvi_ssize_t, _write, ( dmdr
         return 0;
 
     dmosi_mutex_lock(context->lock);
-    bool can = context->running && context->state == dmesphosted_state_connected && size <= FRAME_MAX_PAYLOAD;
+    bool can = context->running && context->state == DMDRVI_WIFI_STATE_CONNECTED && size <= FRAME_MAX_PAYLOAD;
     dmosi_mutex_unlock(context->lock);
 
     slot_info_t info = { FRAME_IF_STA, 0, 0, (uint16_t)size };
@@ -540,10 +580,10 @@ static bool ioctl_needs_arg(int command)
         case DMDRVI_IOCTL_NET_SET_MAC_ADDR:
         case DMDRVI_IOCTL_NET_GET_MAC_ADDR:
         case DMDRVI_IOCTL_NET_GET_LINK_STATUS:
-        case dmesphosted_ioctl_cmd_get_info:
-        case dmesphosted_ioctl_cmd_get_status:
-        case dmesphosted_ioctl_cmd_connect:
-        case dmesphosted_ioctl_cmd_scan:
+        case DMDRVI_IOCTL_WIFI_GET_INFO:
+        case DMDRVI_IOCTL_WIFI_GET_STATUS:
+        case DMDRVI_IOCTL_WIFI_CONNECT:
+        case DMDRVI_IOCTL_WIFI_SCAN:
             return true;
         default:
             return false;
@@ -564,11 +604,11 @@ dmod_dmdrvi_dif_api_declaration(2.0, dmesphosted, int, _ioctl, ( dmdrvi_context_
     {
         case DMDRVI_IOCTL_NET_GET_MAC_ADDR:
         {
-            static const uint8_t none[DMESPHOSTED_MAC_LEN] = { 0 };
+            static const uint8_t none[DMDRVI_WIFI_MAC_LEN] = { 0 };
             dmdrvi_net_mac_addr_t *mac = (dmdrvi_net_mac_addr_t *)arg;
             dmosi_mutex_lock(context->lock);
             bool known = memcmp(context->info.mac, none, sizeof(none)) != 0;
-            memcpy(mac->addr, context->info.mac, DMESPHOSTED_MAC_LEN);
+            memcpy(mac->addr, context->info.mac, DMDRVI_WIFI_MAC_LEN);
             dmosi_mutex_unlock(context->lock);
             return known ? 0 : -ENODEV;     /* Its MAC is known once it is reached */
         }
@@ -579,7 +619,7 @@ dmod_dmdrvi_dif_api_declaration(2.0, dmesphosted, int, _ioctl, ( dmdrvi_context_
         case DMDRVI_IOCTL_NET_GET_LINK_STATUS:
         {
             dmosi_mutex_lock(context->lock);
-            *(dmdrvi_net_link_status_t *)arg = (context->state == dmesphosted_state_connected)
+            *(dmdrvi_net_link_status_t *)arg = (context->state == DMDRVI_WIFI_STATE_CONNECTED)
                                              ? DMDRVI_NET_LINK_UP : DMDRVI_NET_LINK_DOWN;
             dmosi_mutex_unlock(context->lock);
             return 0;
@@ -599,24 +639,22 @@ dmod_dmdrvi_dif_api_declaration(2.0, dmesphosted, int, _ioctl, ( dmdrvi_context_
             return 0;
         }
 
-        case dmesphosted_ioctl_cmd_get_info:
-            dmosi_mutex_lock(context->lock);
-            *(dmesphosted_info_t *)arg = context->info;
-            dmosi_mutex_unlock(context->lock);
+        case DMDRVI_IOCTL_WIFI_GET_INFO:
+            get_wifi_info(context, (dmdrvi_wifi_info_t *)arg);
             return 0;
 
-        case dmesphosted_ioctl_cmd_get_status:
-            wifi_get_status(context, (dmesphosted_status_t *)arg);
+        case DMDRVI_IOCTL_WIFI_GET_STATUS:
+            wifi_get_status(context, (dmdrvi_wifi_status_t *)arg);
             return 0;
 
-        case dmesphosted_ioctl_cmd_connect:
-            return wifi_connect(context, (const dmesphosted_connect_t *)arg);
+        case DMDRVI_IOCTL_WIFI_CONNECT:
+            return wifi_connect(context, (const dmdrvi_wifi_connect_t *)arg);
 
-        case dmesphosted_ioctl_cmd_disconnect:
+        case DMDRVI_IOCTL_WIFI_DISCONNECT:
             return wifi_disconnect(context);
 
-        case dmesphosted_ioctl_cmd_scan:
-            return wifi_scan(context, (dmesphosted_scan_t *)arg);
+        case DMDRVI_IOCTL_WIFI_SCAN:
+            return wifi_scan(context, (dmdrvi_wifi_scan_t *)arg);
 
         default:
             /* Including the standard block/monitor/input commands dmdevfs

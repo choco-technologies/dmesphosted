@@ -25,7 +25,7 @@ target_link_libraries(${DMOD_MODULE_NAME} dmesphosted_if)
 # dmdrvi: the DIF the tests call dmesphosted through (like dmdevfs); dmini:
 # its configuration.
 dmod_link_modules(${DMOD_MODULE_NAME}
-    dmdrvi@>=2.0
+    dmdrvi@>=2.9
     dmini
 )
 

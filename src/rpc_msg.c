@@ -190,25 +190,25 @@ int32_t rpc_resp_code(const rpc_message_t *msg)
     return rpc_payload_int(msg, 1);
 }
 
-bool rpc_read_mac(const rpc_message_t *msg, uint8_t mac[DMESPHOSTED_MAC_LEN])
+bool rpc_read_mac(const rpc_message_t *msg, uint8_t mac[DMDRVI_WIFI_MAC_LEN])
 {
     pb_field_t f;
     if (msg->payload == NULL || !find_field(msg->payload, msg->payload_len, 4, &f) ||
-        f.wire != PB_WIRE_LEN || f.len != DMESPHOSTED_MAC_LEN)
+        f.wire != PB_WIRE_LEN || f.len != DMDRVI_WIFI_MAC_LEN)
         return false;
-    memcpy(mac, f.data, DMESPHOSTED_MAC_LEN);
+    memcpy(mac, f.data, DMDRVI_WIFI_MAC_LEN);
     return true;
 }
 
-static void copy_ssid(char out[DMESPHOSTED_SSID_MAX + 1], const pb_field_t *f)
+static void copy_ssid(char out[DMDRVI_WIFI_SSID_MAX + 1], const pb_field_t *f)
 {
-    size_t n = (f->len < DMESPHOSTED_SSID_MAX) ? f->len : DMESPHOSTED_SSID_MAX;
+    size_t n = (f->len < DMDRVI_WIFI_SSID_MAX) ? f->len : DMDRVI_WIFI_SSID_MAX;
     memcpy(out, f->data, n);
     out[n] = '\0';
 }
 
 /* wifi_event_sta_connected { ssid = 1; ssid_len = 2; bssid = 3; channel = 4; ... } */
-bool rpc_read_sta_connected(const rpc_message_t *msg, dmesphosted_status_t *status)
+bool rpc_read_sta_connected(const rpc_message_t *msg, dmdrvi_wifi_status_t *status)
 {
     pb_field_t  ev, f;
     pb_reader_t r;
@@ -222,8 +222,8 @@ bool rpc_read_sta_connected(const rpc_message_t *msg, dmesphosted_status_t *stat
     {
         if (f.number == 1 && f.wire == PB_WIRE_LEN)
             copy_ssid(status->ssid, &f);
-        else if (f.number == 3 && f.wire == PB_WIRE_LEN && f.len == DMESPHOSTED_MAC_LEN)
-            memcpy(status->bssid, f.data, DMESPHOSTED_MAC_LEN);
+        else if (f.number == 3 && f.wire == PB_WIRE_LEN && f.len == DMDRVI_WIFI_MAC_LEN)
+            memcpy(status->bssid, f.data, DMDRVI_WIFI_MAC_LEN);
         else if (f.number == 4 && f.wire == PB_WIRE_VARINT)
             status->channel = (uint8_t)f.value;
     }
@@ -241,7 +241,7 @@ uint16_t rpc_read_sta_disconnected(const rpc_message_t *msg)
 }
 
 /* wifi_ap_record { bssid = 1; ssid = 2; primary = 3; second = 4; rssi = 5; authmode = 6; ... } */
-static void read_ap_record(const pb_field_t *record, dmesphosted_ap_t *ap)
+static void read_ap_record(const pb_field_t *record, dmdrvi_wifi_ap_t *ap)
 {
     pb_reader_t r;
     pb_field_t  f;
@@ -250,8 +250,8 @@ static void read_ap_record(const pb_field_t *record, dmesphosted_ap_t *ap)
     pb_reader_sub(&r, record);
     while (pb_next(&r, &f))
     {
-        if (f.number == 1 && f.wire == PB_WIRE_LEN && f.len == DMESPHOSTED_MAC_LEN)
-            memcpy(ap->bssid, f.data, DMESPHOSTED_MAC_LEN);
+        if (f.number == 1 && f.wire == PB_WIRE_LEN && f.len == DMDRVI_WIFI_MAC_LEN)
+            memcpy(ap->bssid, f.data, DMDRVI_WIFI_MAC_LEN);
         else if (f.number == 2 && f.wire == PB_WIRE_LEN)
             copy_ssid(ap->ssid, &f);
         else if (f.number == 3 && f.wire == PB_WIRE_VARINT)
@@ -259,12 +259,12 @@ static void read_ap_record(const pb_field_t *record, dmesphosted_ap_t *ap)
         else if (f.number == 5 && f.wire == PB_WIRE_VARINT)
             ap->rssi = (int8_t)pb_int32(&f);
         else if (f.number == 6 && f.wire == PB_WIRE_VARINT)
-            ap->authmode = (uint8_t)f.value;
+            ap->auth = (f.value <= DMDRVI_WIFI_AUTH_WPA2_WPA3) ? (uint8_t)f.value : DMDRVI_WIFI_AUTH_OTHER;   /* esp_wifi's wifi_auth_mode_t 0..7 */
     }
 }
 
 /* Rpc_Resp_WifiScanGetApRecords { resp = 1; number = 2; repeated ap_records = 3 } */
-uint16_t rpc_read_ap_records(const rpc_message_t *msg, dmesphosted_ap_t *aps, uint16_t max)
+uint16_t rpc_read_ap_records(const rpc_message_t *msg, dmdrvi_wifi_ap_t *aps, uint16_t max)
 {
     pb_reader_t r;
     pb_field_t  f;
@@ -282,7 +282,7 @@ uint16_t rpc_read_ap_records(const rpc_message_t *msg, dmesphosted_ap_t *aps, ui
 }
 
 /* Rpc_Resp_WifiStaGetApInfo { resp = 1; ap_record = 2 } */
-bool rpc_read_ap_info(const rpc_message_t *msg, dmesphosted_ap_t *ap)
+bool rpc_read_ap_info(const rpc_message_t *msg, dmdrvi_wifi_ap_t *ap)
 {
     pb_field_t f;
     if (msg->payload == NULL || !find_field(msg->payload, msg->payload_len, 2, &f) ||

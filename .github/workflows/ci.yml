@@ -33,7 +33,6 @@ jobs:
           test -f build/dmf/dmesphosted.dmf
           test -f build/dmf/dmesphosted_version.txt
           test -f build/dmf/test_dmesphosted.dmf
-          test -f build/dmf/wifi.dmf
           echo "Module files present"
 
       - name: Run tests with dmod_loader

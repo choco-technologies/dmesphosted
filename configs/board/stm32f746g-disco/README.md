@@ -39,7 +39,7 @@ dmesphosted driver=board/stm32f746g-disco/wifi.ini
 wifi
 ```
 
-(dmgpio, dmhaman and dmnetif are there already; dmspi only needs to be
+(`wifi` is dmnet's tool. dmgpio, dmhaman and dmnetif are there already; dmspi only needs to be
 installed - its configuration is in `wifi.ini`.) dmnetif reports `wlan0`
 like `eth0`, so `networkd.rules` and `dhcp.rules` start
 `networkd@wlan0` and `dhcp@wlan0` for it: once connected it takes an
