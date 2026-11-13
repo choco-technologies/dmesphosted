@@ -96,6 +96,8 @@ def main():
     rpc("fx_req_set_tx_power", "WifiSetMaxTxPower { power = 80 (20 dBm) }",
         Req, ids.Value("Req_WifiSetMaxTxPower"), 9, "req_set_wifi_max_tx_power",
         lambda r: setattr(r, "power", 80))
+    rpc("fx_req_wifi_stop", "WifiStop { }",
+        Req, ids.Value("Req_WifiStop"), 12, "req_wifi_stop")
 
     # ---- Responses and events: what the co-processor sends ----
     def mac(r):

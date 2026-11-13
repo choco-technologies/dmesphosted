@@ -98,6 +98,7 @@ struct dmdrvi_context
     dmdrvi_wifi_status_t    status;
     dmdrvi_wifi_connect_t   network;            /* What to connect to ("" none) */
     bool                    wifi_started;
+    bool                    wifi_off;           /* Switched off (DMDRVI_IOCTL_WIFI_SET_ENABLED): its Wi-Fi is stopped and stays so, also after it restarts */
     uint32_t                connect_at;         /* Tick: (re)connect from then on */
     uint32_t                connect_backoff_ms;
     uint32_t                connecting_since;
@@ -209,6 +210,8 @@ void wifi_bus_changed(dmdrvi_context_t context, bool up);
 
 int  wifi_connect(dmdrvi_context_t context, const dmdrvi_wifi_connect_t *network);
 int  wifi_disconnect(dmdrvi_context_t context);
+/* The switch of its Wi-Fi (DMDRVI_IOCTL_WIFI_SET_ENABLED) */
+int  wifi_set_enabled(dmdrvi_context_t context, bool enabled);
 int  wifi_scan(dmdrvi_context_t context, dmdrvi_wifi_scan_t *scan);
 void wifi_get_status(dmdrvi_context_t context, dmdrvi_wifi_status_t *status);
 

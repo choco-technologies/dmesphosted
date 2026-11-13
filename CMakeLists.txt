@@ -81,7 +81,7 @@ dmod_add_library(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
 # dmhaman: the pins' dmgpio interrupt handlers are dispatched by name.
 # dmosi:   threads, locks, semaphores, sleep and tick count.
 dmod_link_modules(${DMOD_MODULE_NAME}
-    dmdrvi@>=2.9
+    dmdrvi@>=2.15
     dmini
     dmnetif
     dmroute

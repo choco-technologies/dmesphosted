@@ -274,6 +274,7 @@ DMOD_TEST_STEP(rpc_requests_match_protobuf)
     EXPECT_REQUEST(fx_req_set_tx_power,    RPC_REQ_WIFI_SET_MAX_TX_POWER,    9, fill_tx_power);
     EXPECT_REQUEST(fx_req_set_ps_none,     RPC_REQ_WIFI_SET_PS,             10, fill_ps_none);
     EXPECT_REQUEST(fx_req_set_ps_min,      RPC_REQ_WIFI_SET_PS,             11, fill_ps_min);
+    EXPECT_REQUEST(fx_req_wifi_stop,       RPC_REQ_WIFI_STOP,               12, NULL);
 }
 
 DMOD_TEST_STEP(rpc_reads_responses)
