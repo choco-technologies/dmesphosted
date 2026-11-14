@@ -32,6 +32,7 @@ every Wi-Fi driver, so dmnet's `wifi` tool works with this one:
 | `DMDRVI_IOCTL_WIFI_GET_STATUS` | `dmdrvi_wifi_status_t*` | The state, the network set, its access point, channel and signal (asked when connected) and the last disconnection's reason |
 | `DMDRVI_IOCTL_WIFI_CONNECT` | `const dmdrvi_wifi_connect_t*` | The network to connect to (SSID 1..32, password empty or 8..64). Kept: connected again whenever lost. Returns at once - the status says when |
 | `DMDRVI_IOCTL_WIFI_DISCONNECT` | - | Disconnects and forgets the network |
+| `DMDRVI_IOCTL_WIFI_SET_ENABLED` | `const int*` | The Wi-Fi switch (dmdrvi 2.15): 0 stops its Wi-Fi (`WifiStop`: the network is dropped and forgotten, the state is `OFF`, scan and connect return `-ENODEV`), anything else starts it again (`STARTING`, then `IDLE`; the control thread starts it). It holds when the co-processor restarts. `-EBUSY` while it is being restarted, `-ENODEV` without it |
 | `DMDRVI_IOCTL_WIFI_SCAN` | `dmdrvi_wifi_scan_t*` | The networks in range (at most `max`, at most 16): waits for the scan, a few seconds. `-ENODEV` before its Wi-Fi started, `-EBUSY` while it connects |
 
 The scan's `auth` is dmdrvi's `dmdrvi_wifi_auth_t` (esp_wifi's

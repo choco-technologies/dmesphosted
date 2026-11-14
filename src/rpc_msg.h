@@ -30,6 +30,7 @@
 #define RPC_REQ_WIFI_SET_MAX_TX_POWER   0x113u
 #define RPC_REQ_WIFI_INIT               0x116u
 #define RPC_REQ_WIFI_START              0x118u
+#define RPC_REQ_WIFI_STOP               0x119u
 #define RPC_REQ_WIFI_CONNECT            0x11Au
 #define RPC_REQ_WIFI_DISCONNECT         0x11Bu
 #define RPC_REQ_WIFI_SET_CONFIG         0x11Cu

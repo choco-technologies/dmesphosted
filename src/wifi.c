@@ -105,7 +105,7 @@ void wifi_bus_changed(dmdrvi_context_t context, bool up)
 {
     dmosi_mutex_lock(context->lock);
     context->wifi_started       = false;
-    context->state              = up ? DMDRVI_WIFI_STATE_STARTING : DMDRVI_WIFI_STATE_OFF;
+    context->state              = (up && !context->wifi_off) ? DMDRVI_WIFI_STATE_STARTING : DMDRVI_WIFI_STATE_OFF;
     context->connect_at         = dmosi_get_tick_count();
     context->connect_backoff_ms = BACKOFF_MIN_MS;
     clear_link(context);
@@ -238,6 +238,7 @@ void control_thread(void *arg)
         dmdrvi_wifi_connect_t network;
         dmosi_mutex_lock(context->lock);
         bool up      = context->bus_state == BUS_UP;
+        bool off     = context->wifi_off;
         bool started = context->wifi_started;
         bool due     = context->network.ssid[0] != '\0' && context->state == DMDRVI_WIFI_STATE_IDLE &&
                        (int32_t)(now - context->connect_at) >= 0;
@@ -255,17 +256,27 @@ void control_thread(void *arg)
         /* The co-processor answered: now the interface exists */
         (void)iface_ensure(context);
 
+        if (off)
+            continue;           /* Switched off: nothing to start, nothing to connect */
+
         if (!started)
         {
             if (start_wifi(context) == 0)
             {
                 failures = 0;
                 dmosi_mutex_lock(context->lock);
-                context->wifi_started = true;
-                if (context->state == DMDRVI_WIFI_STATE_STARTING)
-                    context->state = DMDRVI_WIFI_STATE_IDLE;
+                bool switched_off = context->wifi_off;      /* (switched off while it started: it is stopped again) */
+                if (!switched_off)
+                {
+                    context->wifi_started = true;
+                    if (context->state == DMDRVI_WIFI_STATE_STARTING)
+                        context->state = DMDRVI_WIFI_STATE_IDLE;
+                }
                 dmosi_mutex_unlock(context->lock);
-                wake(context);
+                if (switched_off)
+                    (void)call(context, RPC_REQ_WIFI_STOP);
+                else
+                    wake(context);
             }
             else if (++failures >= START_FAILURES_MAX)
             {
@@ -319,6 +330,11 @@ int wifi_connect(dmdrvi_context_t context, const dmdrvi_wifi_connect_t *network)
         return -EINVAL;
 
     dmosi_mutex_lock(context->lock);
+    if (context->wifi_off)
+    {
+        dmosi_mutex_unlock(context->lock);
+        return -ENODEV;         /* Switched off */
+    }
     context->network = *network;
     context->network.ssid[ssid_len] = '\0';
     context->network.password[pass_len] = '\0';
@@ -358,6 +374,53 @@ int wifi_disconnect(dmdrvi_context_t context)
     clear_link(context);
     dmosi_mutex_unlock(context->lock);
     return ret;
+}
+
+/*
+ * The switch: esp_wifi_stop() and its start again - the co-processor stays initialized. Off drops the connection and the network (as
+ * wifi_disconnect() does) and the state is OFF until it is switched on; on lets the control thread start the Wi-Fi (STARTING, then IDLE) -
+ * the thread does everything that starts it, so there is one place that does. The switch is a setting of the driver: it holds when the
+ * co-processor restarts.
+ */
+int wifi_set_enabled(dmdrvi_context_t context, bool enabled)
+{
+    dmosi_mutex_lock(context->lock);
+    bus_state_t bus = context->bus_state;
+    bool off = context->wifi_off;
+    dmosi_mutex_unlock(context->lock);
+    if (bus == BUS_STARTING)
+        return -EBUSY;
+    if (bus != BUS_UP)
+        return -ENODEV;         /* No co-processor to switch */
+    if (enabled != off)
+        return 0;               /* It is as it should be */
+
+    if (enabled)
+    {
+        dmosi_mutex_lock(context->lock);
+        context->wifi_off           = false;
+        context->state              = DMDRVI_WIFI_STATE_STARTING;
+        context->connect_at         = dmosi_get_tick_count();
+        context->connect_backoff_ms = BACKOFF_MIN_MS;
+        dmosi_mutex_unlock(context->lock);
+        wake(context);
+        return 0;
+    }
+
+    /* First the state (a scan or a connect that comes now is refused, the control thread does not connect), then the co-processor */
+    dmosi_mutex_lock(context->lock);
+    context->wifi_off     = true;
+    context->wifi_started = false;
+    memset(&context->network, 0, sizeof(context->network));
+    context->status.ssid[0] = '\0';
+    context->status.reason  = 0;
+    context->state          = DMDRVI_WIFI_STATE_OFF;
+    clear_link(context);
+    dmosi_mutex_unlock(context->lock);
+
+    /* (-EIO: its Wi-Fi was not started yet - the control thread stops it when its start is done) */
+    int ret = call(context, RPC_REQ_WIFI_STOP);
+    return ret == -EIO ? 0 : ret;
 }
 
 int wifi_scan(dmdrvi_context_t context, dmdrvi_wifi_scan_t *scan)

@@ -623,6 +623,7 @@ static bool ioctl_needs_arg(int command)
         case DMDRVI_IOCTL_WIFI_GET_STATUS:
         case DMDRVI_IOCTL_WIFI_CONNECT:
         case DMDRVI_IOCTL_WIFI_SCAN:
+        case DMDRVI_IOCTL_WIFI_SET_ENABLED:
             return true;
         default:
             return false;
@@ -694,6 +695,9 @@ dmod_dmdrvi_dif_api_declaration(2.0, dmesphosted, int, _ioctl, ( dmdrvi_context_
 
         case DMDRVI_IOCTL_WIFI_SCAN:
             return wifi_scan(context, (dmdrvi_wifi_scan_t *)arg);
+
+        case DMDRVI_IOCTL_WIFI_SET_ENABLED:
+            return wifi_set_enabled(context, *(const int *)arg != 0);
 
         default:
             /* Including the standard block/monitor/input commands dmdevfs
